@@ -4,7 +4,7 @@ import { GoogleGenAI, Chat, GenerateContentResponse, Type } from "@google/genai"
 declare var L: any;
 
 // --- STATE & CONFIG ---
-const API_KEY = process.env.API_KEY;
+const API_KEY = "AIzaSyAmtMDqXCDX4LcArFRBE9-V2Uzs2hPp-5U";
 if (!API_KEY) {
     throw new Error("API_KEY environment variable not set.");
 }
