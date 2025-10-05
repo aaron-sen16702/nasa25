@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEOSPHERE: AI Adversity Forecaster</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌍</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'space-blue': '#1a202c',
+                        'accent-cyan': '#06b6d4',
+                        'accent-red': '#f87171',
+                        'text-light': '#f3f4f6',
+                        'slate-blue': '#0f172a',
+                        'dark-card': '#1e293b'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0f172a;
+            font-family: 'Inter', sans-serif;
+        }
+        .risk-card {
+            background-color: #1f2937;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #06b6d4;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .loader-spinner {
+            border-top-color: #06b6d4;
+            border-left-color: #06b6d4;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #radar-chart {
+            max-width: 100%;
+            height: auto;
+        }
+        #map-container {
+            height: 300px; 
+            border-radius: 0.75rem; 
+            margin-top: 1rem;
+        }
+        .chat-bubble {
+            max-width: 80%;
+            padding: 0.75rem 1rem;
+            border-radius: 1rem;
+        }
+        .chat-user {
+            background-color: #06b6d4;
+            color: #1a202c;
+            align-self: flex-end;
+            border-bottom-right-radius: 0.25rem;
+        }
+        .chat-gemini {
+            background-color: #334155;
+            align-self: flex-start;
+            border-bottom-left-radius: 0.25rem;
+        }
+        /* Dark theme for Leaflet Routing Machine */
+        .leaflet-routing-container {
+            background-color: #1f2937;
+            color: #f3f4f6;
+            border: 1px solid #374151;
+        }
+        .leaflet-routing-alt {
+            background-color: #334155;
+        }
+        .leaflet-routing-alt:hover {
+            background-color: #475569;
+        }
+        .leaflet-routing-geocoder, .leaflet-routing-error, .leaflet-routing-collapsible .leaflet-routing-summary {
+            background-color: #1f2937;
+        }
+        .leaflet-routing-icon {
+            background-color: #334155;
+        }
+        
+        /* Live Location Tracking Button */
+        .leaflet-control-track {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23f3f4f6"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>');
+            background-size: 20px 20px;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+        .leaflet-control-track.active {
+            background-color: #06b6d4; /* accent-cyan */
+        }
+
+        /* Pulsing dot for live location */
+        .live-location-marker {
+            background-color: #06b6d4;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid #f3f4f6;
+            box-shadow: 0 0 0 rgba(6, 182, 212, 0.4);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 10px rgba(6, 182, 212, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(6, 182, 212, 0);
+            }
+        }
+        
+        .rain-icon-marker, .thunderstorm-icon-marker {
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .rain-icon-marker {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32"><path d="M46.5,21.5A13.48,13.48,0,0,0,21.5,24,10,10,0,0,0,21,43H45a11,11,0,0,0,1.5-21.5Z" fill="%234299e1" stroke="%23f3f4f6" stroke-miterlimit="10" stroke-width="2"/><line x1="24" y1="49" x2="24" y2="51" fill="none" stroke="%2360a5fa" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2"/><line x1="30" y1="49" x2="30" y2="51" fill="none" stroke="%2360a5fa" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2"/><line x1="36" y1="49" x2="36" y2="51" fill="none" stroke="%2360a5fa" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2"/><line x1="42" y1="49" x2="42" y2="51" fill="none" stroke="%2360a5fa" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2"/></svg>');
+        }
+
+        .thunderstorm-icon-marker {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32"><path d="M46.5,21.5A13.48,13.48,0,0,0,21.5,24,10,10,0,0,0,21,43H45a11,11,0,0,0,1.5-21.5Z" fill="%23718096" stroke="%23f3f4f6" stroke-miterlimit="10" stroke-width="2"/><polygon points="33 43 29 52 38 52 35 61 44 49 36 49 33 43" fill="%23facc15" stroke="%23fef08a" stroke-miterlimit="10" stroke-width="2"/></svg>');
+        }
+
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.22.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/"
+  }
+}
+</script>
+</head>
+<body class="p-4 md:p-8 text-text-light">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-extrabold text-accent-cyan mb-2">GEOSPHERE</h1>
+            <p class="text-xl text-gray-400">AI-Powered Adversity Forecaster (Earth Science Division Challenge)</p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+            <div id="query-panel" class="lg:col-span-2 p-6 risk-card rounded-xl">
+                <h2 class="text-2xl font-semibold mb-6 border-b border-gray-700 pb-2">1. Define Your Trip</h2>
+
+                <form id="forecast-form" class="space-y-6">
+                    
+                    <div>
+                        <label class="block text-sm font-medium mb-2 text-gray-300">Forecast Mode</label>
+                        <div class="flex items-center space-x-4 bg-gray-700/50 p-1 rounded-lg">
+                             <label class="flex-1 text-center p-2 rounded-md cursor-pointer transition-colors has-[:checked]:bg-accent-cyan has-[:checked]:text-space-blue has-[:checked]:font-bold">
+                                <input type="radio" name="forecast-mode" id="mode-spot" value="spot" class="sr-only" checked>
+                                Spot
+                            </label>
+                            <label class="flex-1 text-center p-2 rounded-md cursor-pointer transition-colors has-[:checked]:bg-accent-cyan has-[:checked]:text-space-blue has-[:checked]:font-bold">
+                                <input type="radio" name="forecast-mode" id="mode-route" value="route" class="sr-only">
+                                Route
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div id="start-location-wrapper" class="hidden">
+                            <label for="start-location" class="block text-sm font-medium mb-1 text-gray-300">Start Location</label>
+                            <input type="text" id="start-location" placeholder="e.g., Phoenix, AZ" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-accent-cyan focus:border-accent-cyan text-text-light">
+                        </div>
+                         <div>
+                            <label for="date" class="block text-sm font-medium mb-1 text-gray-300">Date of Event</label>
+                            <input type="date" id="date" required class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-accent-cyan focus:border-accent-cyan text-text-light">
+                        </div>
+                    </div>
+
+                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="location" id="location-label" class="block text-sm font-medium mb-1 text-gray-300">Location</label>
+                            <div class="flex items-center gap-2">
+                                <input type="text" id="location" value="Grand Canyon National Park" required class="flex-grow p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-accent-cyan focus:border-accent-cyan text-text-light">
+                                <button type="button" id="live-location-btn" class="flex-shrink-0 p-3 bg-accent-cyan/80 hover:bg-accent-cyan rounded-lg transition-colors disabled:opacity-50" title="Use my current location">
+                                    <svg class="w-5 h-5 text-space-blue" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+                         <div class="md:col-span-1">
+                            <label for="activity" class="block text-sm font-medium mb-1 text-gray-300">Activity Type</label>
+                            <select id="activity" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-accent-cyan focus:border-accent-cyan text-text-light">
+                                <option value="hiking">Hiking / Backpacking</option>
+                                <option value="fishing">Fishing / Boating</option>
+                                <option value="vacation">General Vacation / Sightseeing</option>
+                                <option value="outdoor_sport">Outdoor Sports / Running</option>
+                                <option value="driving">Road Trip / Driving</option>
+                            </select>
+                        </div>
+                    </div>
+
+
+                    <div id="map-container" class="rounded-xl"></div>
+                    <div id="map-error" class="hidden mt-2 p-2 bg-red-800/30 border border-red-700 text-accent-red rounded-lg text-sm"></div>
+                    <p id="map-helper-text" class="text-sm text-gray-400">Drag the marker or type a location to set the precise coordinates.</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="lat" id="lat-label" class="block text-sm font-medium mb-1 text-gray-300">Latitude (N/S)</label>
+                            <input type="number" id="lat" value="36.10" step="0.01" readonly class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-text-light opacity-70">
+                        </div>
+                        <div>
+                            <label for="lon" id="lon-label" class="block text-sm font-medium mb-1 text-gray-300">Longitude (E/W)</label>
+                            <input type="number" id="lon" value="-112.11" step="0.01" readonly class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-text-light opacity-70">
+                        </div>
+                    </div>
+
+                    <h3 class="text-xl font-semibold pt-4 mb-4 border-t border-gray-700">2. Personal Adversity Thresholds</h3>
+                    <p class="text-sm text-gray-400 mb-4">Define what "Very" means to *you* for this trip. The forecast will be based on these limits.</p>
+
+                    <div class="space-y-4">
+                        <div class="flex items-center space-x-4">
+                            <label for="threshold-hot" class="w-24 text-sm text-gray-300">Very Hot</label>
+                            <input type="range" id="threshold-hot" min="20" max="45" value="32" step="1" class="flex-grow h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                            <span id="value-hot" class="w-12 text-center font-bold text-accent-red">32 °C</span>
+                        </div>
+
+                        <div class="flex items-center space-x-4">
+                            <label for="threshold-cold" class="w-24 text-sm text-gray-300">Very Cold</label>
+                            <input type="range" id="threshold-cold" min="-10" max="15" value="5" step="1" class="flex-grow h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                            <span id="value-cold" class="w-12 text-center font-bold text-accent-cyan">5 °C</span>
+                        </div>
+
+                        <div class="flex items-center space-x-4">
+                            <label for="threshold-windy" class="w-24 text-sm text-gray-300">Very Windy</label>
+                            <input type="range" id="threshold-windy" min="10" max="80" value="45" step="5" class="flex-grow h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                            <span id="value-windy" class="w-12 text-center font-bold text-yellow-500">45 km/h</span>
+                        </div>
+
+                        <div class="flex items-center space-x-4">
+                            <label for="threshold-wet" class="w-24 text-sm text-gray-300">Very Wet</label>
+                            <input type="range" id="threshold-wet" min="1" max="50" value="10" step="1" class="flex-grow h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                            <span id="value-wet" class="w-12 text-center font-bold text-blue-500">10 mm/day</span>
+                        </div>
+
+                        <div class="flex items-center space-x-4">
+                            <label for="threshold-humidity" class="w-24 text-sm text-gray-300">Very Humid</label>
+                            <input type="range" id="threshold-humidity" min="50" max="100" value="85" step="1" class="flex-grow h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                            <span id="value-humidity" class="w-12 text-center font-bold text-pink-500">85 %</span>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" id="submit-button" class="w-full py-3 mt-8 bg-accent-cyan hover:bg-cyan-600 text-space-blue font-bold rounded-xl transition duration-200 shadow-lg disabled:opacity-50" aria-busy="false">
+                        Get AI Adversity Forecast
+                    </button>
+                </form>
+            </div>
+
+            <div class="space-y-8">
+                <div id="results-panel" class="p-6 risk-card rounded-xl">
+                    <div class="flex justify-between items-center mb-6 border-b border-gray-700 pb-2">
+                        <h2 class="text-2xl font-semibold">3. AI Forecast</h2>
+                        <button id="notify-btn" class="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md transition-colors" title="Enable push notifications for weather alerts">
+                            Enable Weather Alerts 🔔
+                        </button>
+                    </div>
+                    
+                    <div id="loading-indicator" class="hidden text-center py-10">
+                        <div class="loader-spinner w-8 h-8 border-4 border-gray-800 border-solid rounded-full inline-block"></div>
+                        <p class="mt-3 text-gray-400">Fetching live forecast & consulting AI...</p>
+                    </div>
+
+                    <div id="risk-display" class="hidden">
+                        <div class="text-center mb-6">
+                            <p class="text-xl text-gray-400">Overall Adversity Score:</p>
+                            <div id="overall-score" class="text-6xl font-extrabold" style="color: #4ade80;">40%</div>
+                            <p id="overall-message" class="text-xl font-medium mt-1 text-green-400">Low Risk</p>
+                        </div>
+                        
+                        <div id="ai-summary" class="p-4 bg-gray-800/50 rounded-lg text-gray-300 text-sm mb-6"></div>
+
+                        <div class="w-full flex justify-center p-2 mb-6">
+                            <canvas id="radar-chart" width="250" height="250" class="max-w-full h-auto"></canvas>
+                        </div>
+
+                        <div id="ai-recommendations" class="space-y-2 text-sm"></div>
+
+                    </div>
+                    
+                    <div id="welcome-message" class="text-center py-10">
+                        <p class="text-gray-400">Enter your trip details to get a personalized, AI-powered forecast from live satellite data.</p>
+                    </div>
+
+                    <div id="error-message" class="hidden mt-6 p-3 bg-red-800/30 border border-red-700 text-accent-red rounded-lg">
+                        <p class="font-medium">Error:</p>
+                        <p id="error-text" class="text-sm"></p>
+                    </div>
+                </div>
+
+                <div id="chatbot-panel" class="p-6 risk-card rounded-xl">
+                    <h2 class="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">4. AI Assistant</h2>
+                    <div id="chat-container" class="h-64 overflow-y-auto p-2 flex flex-col gap-3 bg-gray-800/50 rounded-lg mb-4">
+                        <div class="chat-bubble chat-gemini">Hello! Ask me anything about your trip or the forecast.</div>
+                    </div>
+                    <form id="chat-form" class="flex gap-2">
+                        <input type="text" id="chat-input" placeholder="Ask a follow-up question..." required class="flex-grow p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-accent-cyan focus:border-accent-cyan text-text-light" autocomplete="off">
+                        <button type="submit" id="chat-submit" class="p-3 bg-accent-cyan hover:bg-cyan-600 text-space-blue font-bold rounded-lg transition-colors disabled:opacity-50">
+                            Send
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+    <script type="module" src="index.js"></script>
+</body>
+</html>
